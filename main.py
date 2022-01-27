@@ -1,12 +1,12 @@
 import discord
+import dotenv
 import json
 import os
 import random
 import re
 import requests
-from dotenv import load_dotenv
 
-load_dotenv()
+dotenv.load_dotenv()
 
 client = discord.Client()
 
@@ -23,8 +23,12 @@ async def on_ready():
 
 @client.event
 async def on_message(message):
-    # Do nothing if the message is from the bot
+    # Do nothing if the message is from the bot itself
     if message.author == client.user:
+        return
+
+    # Do nothing if the message is from the other bot
+    if message.author.bot:
         return
 
     # Normalise the message
