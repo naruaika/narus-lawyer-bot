@@ -4,6 +4,9 @@ import os
 import random
 import re
 import requests
+from dotenv import load_dotenv
+
+load_dotenv()
 
 client = discord.Client()
 
