@@ -2,6 +2,8 @@ import discord
 import json
 import os
 import random
+import re
+import requests
 
 client = discord.Client()
 
@@ -23,11 +25,20 @@ async def on_message(message):
         return
 
     # Normalise the message
-    message_normalised = message.content.lower()
+    msg = message.content.lower()
+
+    response = []
 
     # Respond to the greeting
-    if message_normalised.startswith(tuple(greeting_words)):
+    if msg.startswith(tuple(greeting_words)):
         greeting_word = random.choice(greeting_words).capitalize()
-        await message.channel.send(f'{greeting_word}, {message.author.name}!')
+        response.append(f'{greeting_word}, {message.author.mention}!')
+
+    # Provide a help
+    # if message.channel.name == 'help':
+    #     if 'help' in msg:
+    #         response.append("I'm here to help you!")
+
+    await message.channel.send(' '.join(response))
 
 client.run(os.getenv('TOKEN'))
