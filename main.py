@@ -1,28 +1,31 @@
+import asyncio
 import discord
 import json
 import os
 import random
 import re
 from dotenv import load_dotenv
-from transformers import pipeline
+from discord.ext import commands
+from discord_slash import SlashContext
+from discord_slash import SlashCommand
 from transformers import BlenderbotTokenizer
 from transformers import BlenderbotForConditionalGeneration
 
 load_dotenv()
 
-client = discord.Client()
+client = commands.Bot(command_prefix='/')
+slash = SlashCommand(client, sync_commands=True)  # TODO: migrate to newly discord built-in
 
-sentiment_classifier = pipeline('sentiment-analysis')
+# TODO: add basic knowledge about me
 tokenizer = BlenderbotTokenizer.from_pretrained('facebook/blenderbot-400M-distill')
 converse_model = BlenderbotForConditionalGeneration.from_pretrained('facebook/blenderbot-400M-distill')
 
-tag_finder = re.compile('<.*?>')
+tag_finder = re.compile('\s*<.*?>\s*')
+word_finder = re.compile('[^a-zA-Z\s]*')
+duplicate_finder = re.compile(r"(.)\1{2,}", re.DOTALL)
 
 with open('words.json', 'r') as f:
     words = json.loads(f.read())
-    greeting_words = words['greeting']
-    encouraging_words = words['encouraging']
-    naugthy_words = words['naugthy']
 
 
 @client.event
@@ -30,46 +33,71 @@ async def on_ready():
     print(f'{client.user} has connected to Discord!')
 
 
+@slash.slash(name='ping', description='PING!')
+async def ping(context):
+    await context.send('pong')
+
+
+@slash.slash(name='me', description='Send a message to Naru.')
+async def naru(context: SlashContext, message='Hello, Naru!'):
+    print(f'{context.author} says {message} to Naru')
+
+    if message == 'Hello, Naru!':
+        await context.send('You just say hello to Naru!')
+    else:
+        await context.send(f'Your message has been sent to Naru.')
+
+    # TODO: send the message to me in DM
+
+
 @client.event
 async def on_message(message):
+    # Execute slash commands
+    if message.content.startswith('/'):
+        return await client.process_commands(message)
+
     # Do nothing if the message is from the bot itself
     if message.author == client.user:
         return
 
-    # Do nothing if the message is from the other bot
+    # Do nothing if the message is from a bot
     if message.author.bot:
         return
 
+    # Simulate thinking delay
+    await asyncio.sleep(30)
+
     response = []
 
-    # Normalise the message
-    msg = message.content.lower()
+    # Pre-process the message
+    msg = message.content.lower()  # lowercase
+    msg = re.sub(word_finder, '', msg)  # remove non-alphanumeric characters
+    msg = duplicate_finder.sub(r"\1\1", msg)  # remove more than 2 duplicate letters
 
-    # Filter the message
+    # Ask the user to speak up
+    if (msg.isspace() or msg == ''):
+        response.append(f"{message.author.mention}, what weighs on your mind?")
+        response.append(f"We can talk in DM if you want.")
+        return await message.channel.send(' '.join(response))
+
+    # Log the user message
+    if message.channel.type is not discord.ChannelType.private:
+        print(f'{message.author} says {msg}')
+
+    # Warn the user if the message contains naughty words
     msg_words = msg.split()
-    for naughty_word in naugthy_words:
+    for naughty_word in words['naugthy']:
         if any(naughty_word == word for word in msg_words):
-            # Sensor the message
-            # msg = message.content.replace(naughty_word, len(naughty_word) * '*')
-            # await message.edit(content=msg)
+            response.append(f"Hey {message.author.mention}, don't talk badly!")
+            response.append(f"Naru taught me to say nice things only.")
+            return await message.channel.send(' '.join(response))
 
-            # Warn the user
-            await message.channel.send(f"Hey {message.author.mention}, don't talk badly!")
-            return
+    # Indicate the bot is typing
+    async with message.channel.typing():
 
-    # Classify the message
-    msg_sentiment = sentiment_classifier(msg)
-
-    if msg_sentiment[0]['label'] == 'NEGATIVE' and msg_sentiment[0]['score'] > 0.8:
-        # Respond to the depressing message
-        encouraging_word = random.choice(encouraging_words)
-        encouraging_sentence = encouraging_word.replace('{user}', message.author.mention)
-        response.append(encouraging_sentence)
-
-    else:
         # Respond to the greeting message
-        if msg.startswith(tuple(greeting_words)):
-            greeting_word = random.choice(greeting_words)
+        if msg in [word.lower() for word in words['greeting']]:
+            greeting_word = random.choice(words['greeting'])
             greeting_sentence = f'{greeting_word}, {message.author.mention}!'
             response.append(greeting_sentence)
 
@@ -80,12 +108,14 @@ async def on_message(message):
         msg_reply = re.sub(tag_finder, '', msg_reply)
         response.append(msg_reply)
 
-    # Provide a help
-    # if message.channel.name == 'help':
-    #     if 'help' in msg:
-    #         response.append("I'm here to help you!")
+        if response:
+            # Send the response
+            await message.channel.send(' '.join(response))
 
-    if response:
-        await message.channel.send(' '.join(response))
+            # Log the bot response
+            if message.channel.type is not discord.ChannelType.private:
+                print(f"Bot replies {' '.join(response)}")
 
+
+# Run the bot
 client.run(os.getenv('TOKEN'))
